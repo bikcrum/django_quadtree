@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <title>Simple Markers</title>
+    <style>
+        /* Always set the map height explicitly to define the size of the div
+         * element that contains the map. */
+        #map {
+            height: 100%;
+        }
+
+        /* Optional: Makes the sample page fill the window. */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #snackbar {
+            visibility: hidden;
+            min-width: 250px;
+            margin-left: -125px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 2px;
+            padding: 16px;
+            position: fixed;
+            z-index: 1;
+            left: 50%;
+            bottom: 30px;
+            font-size: 17px;
+        }
+
+        #snackbar.show {
+            visibility: visible;
+            -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+
+        @-webkit-keyframes fadein {
+            from {
+                bottom: 0;
+                opacity: 0;
+            }
+            to {
+                bottom: 30px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadein {
+            from {
+                bottom: 0;
+                opacity: 0;
+            }
+            to {
+                bottom: 30px;
+                opacity: 1;
+            }
+        }
+
+        @-webkit-keyframes fadeout {
+            from {
+                bottom: 30px;
+                opacity: 1;
+            }
+            to {
+                bottom: 0;
+                opacity: 0;
+            }
+        }
+
+        @keyframes fadeout {
+            from {
+                bottom: 30px;
+                opacity: 1;
+            }
+            to {
+                bottom: 0;
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="snackbar"></div>
+<script>
+    function initMap() {
+        $.ajaxSetup({
+            headers: {
+                "X-CSRFToken": "{{ csrf_token }}"
+            }
+        });
+
+        var map = new google.maps.Map(document.getElementById('map'), {
+            center: {lat: 0, lng: 0},
+            zoom: 2
+        });
+
+        var lastPolyline = null;
+        var markers = [];
+        map.addListener('click', function (evt) {
+            $.ajax({
+                type: 'POST',
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                url: '/quadtree/get_nearby_users',
+                data: JSON.stringify({
+                    latitude: evt.latLng.lat(),
+                    longitude: evt.latLng.lng(),
+                    use_quadtree: true
+                }),
+                success: function (data) {
+                    y = evt.latLng.lat() - 20;
+                    x = evt.latLng.lng() - 20;
+                    h = 40;
+                    w = 40;
+                    var line = [
+                        {lat: y, lng: x},
+                        {lat: y + h, lng: x},
+                        {lat: y + h, lng: x + w},
+                        {lat: y, lng: x + w},
+                        {lat: y, lng: x}
+                    ];
+                    var polyline = new google.maps.Polyline({
+                        path: line,
+                        geodesic: false,
+                        strokeColor: '#FF0000',
+                        strokeOpacity: 1.0,
+                        strokeWeight: 4
+                    });
+
+                    if (lastPolyline !== null) {
+                        lastPolyline.setMap(null)
+                    }
+
+                    polyline.setMap(map);
+
+                    lastPolyline = polyline;
+
+                    found_locations = data["data"];
+
+                    for (var i = 0; i < markers.length; i++) {
+                        markers[i].setMap(null);
+                    }
+                    markers = [];
+                    for (i = 0; i < found_locations.length; i++) {
+                        found_location = found_locations[i];
+                        var lat = found_location["lat"];
+                        var lng = found_locations["lng"];
+
+                        var marker = new google.maps.Marker({
+                            position: found_location,
+                            map: map,
+                            icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                            zIndex: 1
+                        });
+
+                        markers.push(marker);
+                    }
+
+                    var meta = data["meta"];
+                    showSnackbar('It took ' + meta["time_taken"] + ' seconds to find ' + meta["found_locations"] + ' locations from ' + meta["total_locations"] + ' locations. Used quadtree:' + meta["using_quadtree"]);
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    console.log(xhr.status);
+                    console.log(thrownError);
+                }
+            });
+        });
+
+        "{% for location in locations %}"
+            {#            console.log("{{ latlng.lat }}" + "," + "{{ latlng.lng }}");#}
+            {#            var icon = {#}
+            {#                url: "{{ latlng.icon }}", // url#}
+            {#                scaledSize: new google.maps.Size(30, 30), // scaled size#}
+            {#                origin: new google.maps.Point(0, 0), // origin#}
+            {#                anchor: new google.maps.Point(0, 0) // anchor#}
+            {#            };#}
+            var marker = new google.maps.Marker({
+                position: {lat: Number("{{ location.latitude }}"), lng: Number("{{ location.longitude }}")},
+                map: map,
+                zIndex: 0
+                {#                icon: icon,#}
+                {#                title: "{{ latlng.title }}"#}
+            });
+            "{% endfor %}"
+
+        "{% for boundary in boundaries %}"
+            var x = Number("{{ boundary.x }}");
+            var y = Number("{{ boundary.y }}");
+            var w = Number("{{ boundary.w }}");
+            var h = Number("{{ boundary.h }}");
+            var line = [
+                {lat: y, lng: x},
+                {lat: y + h, lng: x},
+                {lat: y + h, lng: x + w},
+                {lat: y, lng: x + w},
+                {lat: y, lng: x}
+            ];
+            var polyline = new google.maps.Polyline({
+                path: line,
+                geodesic: false,
+                strokeColor: '#000000',
+                strokeOpacity: 1.0,
+                strokeWeight: 2
+            });
+
+            polyline.setMap(map);
+
+            "{% endfor  %}"
+    }
+
+    function showSnackbar(message) {
+        var x = document.getElementById("snackbar");
+        x.innerHTML = message;
+        x.className = "show";
+        setTimeout(function () {
+            x.className = x.className.replace("show", "");
+        }, 3000);
+    }
+</script>
+<script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8F7dboJbvkgxPLCFhAwEzBbS1i4LnMgg&callback=initMap">
+</script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+</body>
+</html>
